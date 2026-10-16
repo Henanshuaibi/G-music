@@ -90,7 +90,7 @@ sh build.sh
 
 Java 源码在 `src/cn/pulse/player`，无第三方运行时库。需要 JDK、aapt2、zipalign、apksigner、D8/R8、API 35 的 `android.jar` 和 API 32 的 `android-res.jar`。本机构建工具准备好后，构建无需联网。
 
-仓库不包含 `tools/`、`build/`、签名私钥或签名密码。克隆后需在 `tools/` 放好 `android.jar`、`android-res.jar` 和 `r8.jar`，并确保其余构建工具位于 PATH。构建可覆盖原应用的安装包还需要恢复原 `tools/pulse.keystore`，将对应密码单独保存到 `tools/signing-password`，设置文件权限为 `600`；也可通过 `GMUSIC_SIGNING_PASSWORD_FILE` 指定本机密码文件路径。私有备份目录 `$HOME/.local/share/gmusic-signing/` 中同名的密钥与密码文件可作为回退来源。签名文件只在本机使用。
+源码提交不包含 `tools/`、`build/`、签名私钥或签名密码。克隆后需在 `tools/` 放好 `android.jar`、`android-res.jar` 和 `r8.jar`，并确保其余构建工具位于 PATH。构建可覆盖原应用的安装包还需要恢复原 `tools/pulse.keystore`，将对应密码单独保存到 `tools/signing-password`，设置文件权限为 `600`；也可通过 `GMUSIC_SIGNING_PASSWORD_FILE` 指定本机密码文件路径。私有备份目录 `$HOME/.local/share/gmusic-signing/` 中同名的密钥与密码文件可作为回退来源。签名文件只在本机使用。
 
 脚本会检查 `signing-certificate.sha256`，优先使用原 `tools/pulse.keystore`，缺少时读取本机私有签名备份。不会为现有应用悄悄生成新密钥。源码分享包包含代码、资源、测试、文档、公开签名指纹和示例，不包含密钥、SDK、音频缓存。
 
@@ -121,3 +121,9 @@ Java 源码在 `src/cn/pulse/player`，无第三方运行时库。需要 JDK、a
 当前没有连接的 ADB 设备；真实手指拖动、弹窗边缘接收、触屏右划和文件选择器仍需安装后验证。模拟时钟和 Android 运行时测试不代表已完成界面触屏验证。
 
 拖动事件参考：[Android 原生视图拖放](https://developer.android.com/develop/ui/views/touch-and-input/drag-drop/view)。
+
+## 私有完整备份
+
+[下载完整项目备份和当前 APK](https://github.com/Henanshuaibi/G-music/releases/tag/backup-2026-10-16)。Release 中的 `G-music-full-backup-2026-10-16.tar.gz` 包含本机项目全部 517 个文件（不含 Git 元数据），包括源码、SDK/构建工具、构建产物、缓存、原签名密钥及签名密码。`SHA256SUMS.txt` 可用于校验下载。
+
+恢复时解压到单独目录，安装时可直接使用附件 `G-music-0.26.apk`。此完整备份含签名凭据，请保持仓库私有，不要转发或公开附件。GitHub 登录凭据及项目目录之外的配置未包含在内。
