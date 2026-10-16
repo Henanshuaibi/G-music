@@ -1,0 +1,32 @@
+package cn.pulse.player;
+import android.content.*;
+import android.graphics.*;
+import java.io.File;
+import java.util.Arrays;
+public final class DeviceVisualSettingsCheck {
+ static void check(boolean value,String reason){if(!value)throw new AssertionError(reason);}
+ static void settings(VisualSettings value,int circle,int motion,int bars,String reason){check(value.circle==circle && value.motion==motion && value.bars==bars,reason);}
+ static Bitmap render(int w,int h,float density,AudioReaction.Frame frame,boolean active,VisualSettings settings){Bitmap result=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);Canvas c=new Canvas(result);c.drawColor(Color.BLACK);new ReactionArt().draw(c,w,h,density,density,frame,active,0xffeeeeee,"",settings);return result;}
+ static int circleHeight(AudioReaction.Frame frame,VisualSettings settings){Bitmap b=render(1200,600,1.5f,frame,true,settings);int height=DeviceArtPreview.bounds(b).height();b.recycle();return height;}
+ static float waveTravel(VisualSettings settings){AudioReaction.Frame frame=new AudioReaction.Frame();frame.signal=true;Arrays.fill(frame.wave,1);Bitmap up=render(1200,600,1.5f,frame,true,settings);float a=DeviceArtPreview.regionBounds(up,60,160).exactCenterY();up.recycle();Arrays.fill(frame.wave,-1);Bitmap down=render(1200,600,1.5f,frame,true,settings);float b=DeviceArtPreview.regionBounds(down,60,160).exactCenterY();down.recycle();return a-b;}
+ static int barHeight(VisualSettings settings){AudioReaction.Frame frame=new AudioReaction.Frame();frame.signal=true;Arrays.fill(frame.bands,1);Bitmap image=render(1200,600,1.5f,frame,true,settings);Bitmap region=Bitmap.createBitmap(image,30,390,100,210);int height=DeviceArtPreview.bounds(region).height();region.recycle();image.recycle();return height;}
+ public static void main(String[] args){try{run(new File(args[0]));System.out.println("PASS: visual defaults/persistence/reset/invalid-value recovery, independent circle/motion/bar controls, all extreme settings remain in bounds and pause is static");System.exit(0);}catch(Throwable t){t.printStackTrace();System.exit(1);}}
+ static void run(File folder)throws Exception{
+  folder.mkdirs();DevicePlaybackRecoveryCheck.Store store=new DevicePlaybackRecoveryCheck.Store();settings(VisualSettings.load(store),100,100,100,"old install uses current accepted visuals");
+  store.getSharedPreferences("favorites",0).edit().putString("items","favorite data").apply();store.getSharedPreferences("playback",0).edit().putInt("mode",2).apply();store.getSharedPreferences("visuals",0).edit().putString("future","keep").apply();
+  VisualSettings custom=new VisualSettings(82,135,155);custom.save(store);Context recreated=new ContextWrapper(store);settings(VisualSettings.load(recreated),82,135,155,"recreated/landscape context loads identical values");
+  VisualSettings.DEFAULT.save(recreated);settings(VisualSettings.load(store),100,100,100,"reset restores all three defaults");check(store.getSharedPreferences("visuals",0).getString("future","").equals("keep"),"reset preserves unrelated settings");check(store.getSharedPreferences("favorites",0).getString("items","").equals("favorite data") && store.getSharedPreferences("playback",0).getInt("mode",-1)==2,"visual settings do not change library or playback mode");
+  store.getSharedPreferences("visuals",0).edit().putInt("circle",Integer.MAX_VALUE).putInt("motion",-500).putInt("bars",Integer.MIN_VALUE).apply();settings(VisualSettings.load(store),115,0,50,"out of range persisted values are bounded");store.getSharedPreferences("visuals",0).edit().putString("motion","broken").apply();settings(VisualSettings.load(store),115,100,50,"wrong value type recovers to default");
+  AudioReaction.Frame calm=new AudioReaction.Frame();calm.signal=true;
+  int baseline=circleHeight(calm,VisualSettings.DEFAULT),small=circleHeight(calm,new VisualSettings(70,100,100)),big=circleHeight(calm,new VisualSettings(115,100,100));check(small<baseline*.72f && big>baseline*1.12f,"circle slider changes geometry visibly");
+  AudioReaction.Frame beat=new AudioReaction.Frame();beat.signal=true;beat.bass=1;check(circleHeight(beat,new VisualSettings(100,0,100))==baseline,"zero motion freezes circle pulse");check(circleHeight(beat,new VisualSettings(100,200,100))>circleHeight(beat,VisualSettings.DEFAULT),"motion slider increases circle response independently");
+  float normal=waveTravel(VisualSettings.DEFAULT),still=waveTravel(new VisualSettings(100,0,100)),strong=waveTravel(new VisualSettings(100,200,100));check(Math.abs(still)<2 && strong>normal*1.95f && strong<normal*2.05f,"motion slider controls waveform response");
+  int normalBars=barHeight(VisualSettings.DEFAULT),shortBars=barHeight(new VisualSettings(100,100,50)),longBars=barHeight(new VisualSettings(100,100,180));check(shortBars<normalBars*.55f && longBars>normalBars*1.7f,"bar slider scales spectrum height");check(barHeight(new VisualSettings(70,0,100))==normalBars,"circle and waveform controls leave bar height independent");check(circleHeight(beat,new VisualSettings(100,100,180))==circleHeight(beat,VisualSettings.DEFAULT),"bar height leaves circle amplitude independent");
+  AudioReaction.Frame max=new AudioReaction.Frame();max.signal=true;max.bass=max.energy=1;Arrays.fill(max.bands,1);for(int i=0;i<max.wave.length;i++)max.wave[i]=(float)Math.sin(i*.45);
+  for(int[] size:new int[][]{{1200,600},{2400,1080},{1080,1050},{1080,480},{1080,320}})for(int circle:new int[]{70,100,115})for(int motion:new int[]{0,100,200})for(int bars:new int[]{50,100,180}){
+   VisualSettings value=new VisualSettings(circle,motion,bars);float density=size[0]==1200?1.5f:3;Bitmap image=render(size[0],size[1],density,max,true,value);Rect bounds=DeviceArtPreview.bounds(image);check(bounds.left>0 && bounds.top>0 && bounds.right<size[0] && bounds.bottom<size[1],"extreme setting clipped at "+size[0]+"x"+size[1]+" "+circle+"/"+motion+"/"+bars+": "+bounds);image.recycle();
+  }
+  VisualSettings maxSettings=new VisualSettings(115,200,180);Bitmap paused=render(1200,600,1.5f,max,false,maxSettings),empty=render(1200,600,1.5f,new AudioReaction.Frame(),false,maxSettings);check(paused.sameAs(empty),"pause discards stale waveform and spectrum at maximum settings");paused.recycle();empty.recycle();
+  for(int[] size:new int[][]{{1080,1050},{2400,1080}}){Bitmap image=render(size[0],size[1],3,max,true,maxSettings);DeviceArtPreview.save(image,folder,"max-"+size[0]+"x"+size[1]+".png");image.recycle();}
+ }
+}
