@@ -133,8 +133,6 @@ Java 源码在 `src/cn/pulse/player`，无第三方运行时库。需要 JDK、a
 
 ## 私有完整备份
 
-[下载完整项目备份和当前 APK](https://github.com/Henanshuaibi/G-music/releases/tag/backup-2026-10-16)。Release 中的 `G-music-full-backup-2026-10-16.tar.gz` 包含本机项目全部 517 个文件（不含 Git 元数据），包括源码、SDK/构建工具、构建产物、缓存、原签名密钥及签名密码。`SHA256SUMS.txt` 可用于校验下载。
+[下载所有版本 APK 和完整备份](https://github.com/Henanshuaibi/G-music/releases/tag/backup-2026-10-22)。完整备份 `G-music-full-backup-2026-10-21.tar.zst` 已逐文件校验，共 584 个文件，包含所有现存版本的源码包和 APK、SDK/构建工具、构建产物、缓存及原签名密钥和密码。`APK-VERSIONS.txt` 列出各个 APK（含重复副本和中间包），`SHA256SUMS.txt` 用于校验下载。
 
-恢复时解压到单独目录，安装时可直接使用附件 `G-music-0.26.apk`。此完整备份含签名凭据，请保持仓库私有，不要转发或公开附件。GitHub 登录凭据及项目目录之外的配置未包含在内。
-
-0.27 验证命令：`sh tests/check-027.sh`。包含真实 Android 运行时的数据存取与受控播放服务回归；不代表实机 UI 或在线搜索已经验证成功。
+[恢复步骤及签名说明](BACKUP.md)。另附当前 `G-music-0.27.apk` 方便安装。旧版 2026-10-16 备份继续保留在 Releases 中。完整恢复附件包含签名凭据，请保持私有，不要公开或转发；GitHub 登录状态和项目目录之外的配置未包含。
