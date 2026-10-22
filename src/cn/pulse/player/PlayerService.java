@@ -21,6 +21,7 @@ public class PlayerService extends Service {
  public String status="导入歌曲，点亮声音";
  private AudioPlayer player;
  private final HashSet<String> removedFromQueue=new HashSet<>();
+ private PlaylistStore playlists;private ListeningHistory history;private ListeningSession listening;
  private FavoriteStore favorites;private int playbackMode;private final Random selectionRandom=new Random();
  private String mediaSource;private Map<String,String> mediaHeaders=new HashMap<>();private PcmAnalyzer analyzer;
  private final ExecutorService resolver=Executors.newSingleThreadExecutor();
@@ -40,7 +41,7 @@ public class PlayerService extends Service {
  private final BroadcastReceiver noisy=new BroadcastReceiver(){public void onReceive(Context c,Intent i){pause();}};
  public void onCreate(){
   super.onCreate();SharedPreferences favoritePrefs=getSharedPreferences("favorites",0);favorites=new FavoriteStore(new FavoriteStore.Storage(){public String read(){return favoritePrefs.getString("items","[]");}public void write(String data){favoritePrefs.edit().putString("items",data).apply();}});playbackMode=getSharedPreferences("playback",0).getInt("mode",0);removedFromQueue.addAll(favoritePrefs.getStringSet("removedFromQueue",Collections.emptySet()));audio=(AudioManager)getSystemService(AUDIO_SERVICE);
-  restoreQueue();
+  musicStores();restoreQueue();
   focus=new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()).setOnAudioFocusChangeListener(this::audioFocusChanged,main).build();
   ((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(new NotificationChannel("music","音乐播放",NotificationManager.IMPORTANCE_LOW));
   session=new MediaSession(this,"G music");session.setCallback(new MediaSession.Callback(){
@@ -85,7 +86,7 @@ public class PlayerService extends Service {
  void ensureForeground(){startService(new Intent(this,PlayerService.class));startForeground(1,notification());foreground=true;}
  boolean requestFocus(){return audio.requestAudioFocus(focus)==AudioManager.AUDIOFOCUS_REQUEST_GRANTED;}
  void stopPlaybackService(){stopForeground(true);foreground=false;stopSelf();}
- private void resetPlayer(){generation++;releaseAnalysis();mediaSource=null;ready=false;loading=false;seeking=false;playWhenReady=false;resumeFocus=false;savedPosition=0;savedDuration=0;if(player!=null){player.release();player=null;}}
+ private void resetPlayer(){if(listening!=null)listening.end(SystemClock.elapsedRealtime(),System.currentTimeMillis());generation++;releaseAnalysis();mediaSource=null;ready=false;loading=false;seeking=false;playWhenReady=false;resumeFocus=false;savedPosition=0;savedDuration=0;if(player!=null){player.release();player=null;}}
  private void onPrepared(int ticket){
   if(current().expectedMs>0 && player.duration()+5000<current().expectedMs){loadError(ticket,"实际音源短于标注分集，已停止播放，请换一个结果");return;}
   ready=true;loading=false;savedDuration=player.duration();savedPosition=clampPosition(savedPosition);
@@ -120,7 +121,7 @@ public class PlayerService extends Service {
  public void removeListener(Runnable listener){listeners.remove(listener);}
  // Queue order and bookmark share one transaction so duplicate occurrences restore exactly.
  private SharedPreferences.Editor bookmark(SharedPreferences.Editor edit){Track t=current();return edit.putInt("queueIndex",t==null?-1:index).putString("queueSource",t==null?"":t.url).putInt("queuePosition",t==null?0:position()).putInt("queueDuration",t==null?0:duration());}
- public void savePlayback(){bookmark(getSharedPreferences("MainActivity",0).edit()).apply();}
+ public void savePlayback(){sampleListening();bookmark(getSharedPreferences("MainActivity",0).edit()).apply();}
  private void persistQueue(){try{JSONArray a=new JSONArray();for(Track t:tracks)a.put(new JSONObject().put("title",t.title).put("artist",t.artist).put("url",t.url).put("duration",t.expectedMs));bookmark(getSharedPreferences("MainActivity",0).edit().putString("queue",a.toString())).apply();}catch(Exception ignored){}}
  void restoreQueue(){
   SharedPreferences prefs=getSharedPreferences("MainActivity",0);ArrayList<Track> restored=new ArrayList<>();
@@ -128,6 +129,16 @@ public class PlayerService extends Service {
   tracks.addAll(restored);int remembered=prefs.getInt("queueIndex",-1);
   if(remembered>=0 && remembered<tracks.size() && tracks.get(remembered).url.equals(prefs.getString("queueSource",""))){index=remembered;savedDuration=Math.max(0,prefs.getInt("queueDuration",current().expectedMs));savedPosition=clampPosition(prefs.getInt("queuePosition",0));status="已恢复上次播放，点播放继续";}
  }
+ private void musicStores(){
+  SharedPreferences p=getSharedPreferences("library",0);
+  if(playlists==null)playlists=new PlaylistStore(new PlaylistStore.Storage(){public String read(){return p.getString("playlists","[]");}public void write(String s){p.edit().putString("playlists",s).apply();}});
+  if(history==null){history=new ListeningHistory(new ListeningHistory.Storage(){public String read(){return p.getString("history","[]");}public void write(String s){p.edit().putString("history",s).apply();}});listening=new ListeningSession(history);}
+ }
+ private void sampleListening(){if(listening!=null)listening.sample(current(),playing() && !seeking && playWhenReady,SystemClock.elapsedRealtime(),System.currentTimeMillis());}
+ public PlaylistStore playlists(){musicStores();return playlists;}
+ public ArrayList<ListeningHistory.Entry> listeningHistory(){musicStores();sampleListening();return history.ranked(System.currentTimeMillis());}
+ public void clearListeningHistory(){musicStores();listening.end(SystemClock.elapsedRealtime(),System.currentTimeMillis());history.clear();listening=new ListeningSession(history);sampleListening();}
+ public void playPlaylist(List<Track> songs,int selected){if(songs.isEmpty() || selected<0 || selected>=songs.size())return;ArrayList<Track> copy=new ArrayList<>(songs);resetPlayer();tracks.clear();tracks.addAll(copy);index=-1;for(Track t:copy)removedFromQueue.remove(t.url);persistRemoved();play(selected);}
  public ArrayList<Track> favorites(){return favorites.list();}
  public boolean canFavorite(Track track){return track!=null && !track.url.startsWith("bili-link:") && (!track.url.startsWith("bili:") || track.url.contains("?cid="));}
  public Track duplicateFavorite(Track track){return track==null?null:SongIdentity.findDuplicate(track,favorites.list());}
@@ -148,11 +159,11 @@ public class PlayerService extends Service {
   QueueEdits.Movement result=QueueEdits.move(tracks,index,source,anchor,after);if(result==null)return false;
   index=result.currentIndex;if(result.changed)persistQueue();return true;
  }
- public int[] restoreLibrary(LibraryBackup.Data data){int queued=LibraryBackup.mergeQueue(tracks,data.queue),liked=favorites.merge(data.favorites);playbackMode=data.mode;getSharedPreferences("playback",0).edit().putInt("mode",playbackMode).apply();if(data.visuals!=null)data.visuals.save(this);persistQueue();update();return new int[]{queued,liked};}
+ public int[] restoreLibrary(LibraryBackup.Data data){musicStores();try{playlists.merge(data.playlists);history.merge(data.history);}catch(Exception e){throw new IllegalArgumentException("歌单或播放记录合并失败："+e.getMessage());}int queued=LibraryBackup.mergeQueue(tracks,data.queue),liked=favorites.merge(data.favorites);playbackMode=data.mode;getSharedPreferences("playback",0).edit().putInt("mode",playbackMode).apply();if(data.visuals!=null)data.visuals.save(this);persistQueue();update();return new int[]{queued,liked};}
  public int playbackMode(){return playbackMode;}
  public void cyclePlaybackMode(){playbackMode=PlaybackOrder.nextMode(playbackMode);getSharedPreferences("playback",0).edit().putInt("mode",playbackMode).apply();update();}
  public void playTrack(Track track){if(track==null)return;if(removedFromQueue.remove(track.url))persistRemoved();int exact=tracks.indexOf(track);if(exact>=0){play(exact);return;}for(int i=0;i<tracks.size();i++)if(tracks.get(i).url.equals(track.url)){play(i);return;}tracks.add(track);persistQueue();play(tracks.size()-1);}
- private void autoNext(){int n=PlaybackOrder.choose(tracks.size(),index,playbackMode,1,true,selectionRandom);if(n==index && ready){seek(0);resume();}else if(n>=0)play(n);
+ private void autoNext(){if(listening!=null)listening.end(SystemClock.elapsedRealtime(),System.currentTimeMillis());int n=PlaybackOrder.choose(tracks.size(),index,playbackMode,1,true,selectionRandom);if(n==index && ready){seek(0);resume();}else if(n>=0)play(n);
  }
  public void toggle(){if(playWhenReady)pause();else resume();}
  public void resume(){
@@ -180,6 +191,7 @@ public class PlayerService extends Service {
    .setStyle(new Notification.MediaStyle().setMediaSession(session.getSessionToken()).setShowActionsInCompactView(0,1,2)).setOngoing(playWhenReady).setVisibility(Notification.VISIBILITY_PUBLIC).build();
  }
  void update(){
+  sampleListening();
   main.removeCallbacks(checkpoint);if(playing())main.postDelayed(checkpoint,5000);
   for(Runnable listener:new ArrayList<>(listeners))listener.run();
   if(session==null)return;

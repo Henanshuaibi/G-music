@@ -33,5 +33,5 @@ java -Xmx512m -cp tools/r8.jar com.android.tools.r8.D8 --lib tools/android.jar -
 cp build/resources.apk build/unsigned.apk
 jar uf build/unsigned.apk -C build/dex classes.dex
 zipalign -f 4 build/unsigned.apk build/aligned.apk
-apksigner sign --ks "$gmusic_keystore" --ks-pass "file:$gmusic_password_file" --out build/G-music-0.26.apk build/aligned.apk
-apksigner verify --verbose build/G-music-0.26.apk
+apksigner sign --ks "$gmusic_keystore" --ks-pass "file:$gmusic_password_file" --out build/G-music-0.27.apk build/aligned.apk
+apksigner verify --verbose build/G-music-0.27.apk

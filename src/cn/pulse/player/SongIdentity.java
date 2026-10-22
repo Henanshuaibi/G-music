@@ -14,6 +14,7 @@ public final class SongIdentity {
   else{Matcher bracket=Pattern.compile("^[【\\[]([^】\\]]{1,16})[】\\]]\\s*(.+)$").matcher(t);if(bracket.matches()){if(artist.isEmpty())artist=bracket.group(1);t=bracket.group(2);}else{String[] parts=t.split("\\s*[-—–]\\s*",2);if(parts.length==2 && (generic || normalized(parts[0]).equals(normalized(artist)))){artist=parts[0];t=parts[1];}}}
   String[] value=new String[]{normalized(t),simple(artist),version(track.title)};cache.put(track,value);return value;
  }
+ public static String musicArtist(PlayerService.Track track){String a=describe(track)[1].trim();return a.length()<=40?a:"";}
  public static boolean possibleDuplicate(PlayerService.Track a,PlayerService.Track b){
   if(a.url.equals(b.url))return true;
   String[] x=describe(a),y=describe(b);if(!x[2].equals(y[2]))return false;if(x[0].isEmpty() || !x[0].equals(y[0]))return false;
